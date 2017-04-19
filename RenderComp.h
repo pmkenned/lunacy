@@ -40,50 +40,6 @@ public:
 
         mc = getGameObject()->getComponent<MeshComp>();
         tc = getGameObject()->getComponent<TransformComp>();
-
-        std::vector<MeshCompMesh *> const & meshes = mc->getMeshes();
-        for(auto i = meshes.begin(); i != meshes.end(); i++) {
-
-            size_t num_vertices = (*i)->numVertices();
-            Vertex * vertices = (*i)->getVertices();
-            size_t num_triangles = (*i)->numTriangles();
-            Triangle * triangles = (*i)->getTriangles();
-
-            GLuint VBO, IBO;
-            glGenBuffers(1, &VBO);
-            glGenBuffers(1, &IBO);
-
-            GLuint VAO;
-            glGenVertexArrays(1, &VAO);
-            glBindVertexArray(VAO);
-
-                VAOs.push_back(VAO);
-
-                // Vertex buffer
-                glBindBuffer(GL_ARRAY_BUFFER, VBO);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * num_vertices, vertices, GL_STATIC_DRAW);
-
-                glEnableVertexAttribArray(0); // Position ; Matches layout (location = 0)
-                glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-
-                glEnableVertexAttribArray(1); // Normal   ; Matches layout (location = 1)
-                glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)sizeof(glm::vec4));
-
-                glEnableVertexAttribArray(2); // TexCoord ; Matches layout (location = 2)
-                glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(sizeof(glm::vec4) + sizeof(glm::vec3)));
-
-                glEnableVertexAttribArray(3); // Colors   ; Matches layout (location = 3)
-                glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(sizeof(glm::vec4) + sizeof(glm::vec3) + sizeof(glm::vec2)));
-
-                // Index buffer
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Triangle) * num_triangles, triangles, GL_STATIC_DRAW);
-
-                numTri.push_back(num_triangles);
-
-            glBindVertexArray(0);
-        }
-
     }
 
     void update() {
@@ -98,11 +54,10 @@ public:
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, specularMap);
 
-        //size_t num_triangles = mc->numTriangles();
-
         glUniform1i(glGetUniformLocation(getGameObject()->getProgram(), "textured"), 1); // TODO: consult mesh component
         glUniform1i(glGetUniformLocation(getGameObject()->getProgram(), "specTextured"), 0); // TODO
 
+        // TODO: maybe the transform component should have a pre-computed model matrix which updates whenever the transform is changed
         GLint modelLoc = glGetUniformLocation(getGameObject()->getProgram(), "model");
         glm::mat4 model;
         model = glm::mat4();
@@ -114,9 +69,12 @@ public:
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
         std::vector<MeshCompMesh *> const & meshes = mc->getMeshes();
-        for(size_t i = 0; i < VAOs.size(); i++) {
-            size_t num_triangles = numTri[i];
-            glBindVertexArray(VAOs[i]);
+        for(size_t i = 0; i < meshes.size(); i++) {
+            if(!meshes[i]->getEnabled())
+                continue;
+            size_t num_triangles = meshes[i]->numTriangles();
+            GLuint VAO = meshes[i]->getVAO();
+            glBindVertexArray(VAO);
                 glDrawElements(GL_TRIANGLES, 3*num_triangles, GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
         }
@@ -126,12 +84,6 @@ public:
     void disable() { active = false; }
 
 private:
-
-    std::vector<GLuint> VAOs;
-    //std::vector<GLuint> VBOs;
-    //std::vector<GLuint> IBOs;
-    std::vector<size_t> numTri;
-
     GLuint moonMap; // TODO
     GLuint specularMap;
     MeshComp * mc;

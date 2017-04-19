@@ -88,6 +88,8 @@ void calculate_normals(Vertex * vertices, size_t num_vertices, Triangle * triang
 class MeshCompMesh {
 public:
 
+    MeshCompMesh() : render_enabled(true) {}
+
     void load(std::string filename) {
         mesh.filename = filename;
         mesh.load();
@@ -96,18 +98,31 @@ public:
     void copy_from_mesh();
 
     // accessor methods
-    size_t     numVertices()  { return num_vertices; }
-    Vertex *   getVertices()  { return vertices; }
-    size_t     numTriangles() { return num_triangles; }
-    Triangle * getTriangles() { return triangles; }
+    size_t      numVertices()   { return num_vertices; }
+    Vertex *    getVertices()   { return vertices; }
+    size_t      numTriangles()  { return num_triangles; }
+    Triangle *  getTriangles()  { return triangles; }
+
+    GLuint      getVAO()        { return VAO; }
+    bool        getEnabled()    { return render_enabled; }
+
+    void        enableRender()  { render_enabled = true; }
+    void        disableRender() { render_enabled = false; }
 
     void make_cube(float xs = 1.0f, float ys = 1.0f, float zs = 1.0f, float xc = 0.0f, float yc = 0.0f, float zc = 0.0f );
     void make_pyramid(float xs = 1.0f, float ys = 1.0f, float zs = 1.0f, float xc = 0.0f, float yc = 0.0f, float zc = 0.0f );
     void make_square(float x, float y);
-    void make_grid(size_t vps, glm::vec3 const & position); // TODO: reuse IBO somehow
+    void make_grid(size_t vps, glm::vec3 const & position, float sl); // TODO: reuse IBO somehow
+
+
+    // TODO: make private
+    GLuint VAO;
+    GLuint VBO, IBO;
 
 private:
     Mesh mesh;
+    bool render_enabled;
+
     size_t num_vertices;
     Vertex * vertices;
     size_t num_triangles;
@@ -121,15 +136,71 @@ public:
 
     void update();
 
-    void newGridMesh(size_t vps, glm::vec3 const & position = glm::vec3(0.0f)) {
+    void disableMesh(size_t index) {
+        meshes[index]->disableRender();
+    }
+
+    void enableMesh(size_t index) {
+        meshes[index]->enableRender();
+    }
+
+    // TODO: write toggleMesh function
+
+    size_t newGridMesh(size_t vps, glm::vec3 const & position = glm::vec3(0.0f), float sl=1.0f) {
         MeshCompMesh * nm = new MeshCompMesh;
-        nm->make_grid(vps, position);
+        nm->make_grid(vps, position, sl);
+
+        std::cout << "new mesh...\n";
+
+        // TODO: consider moving the following code to a common subroutine
+        // TODO: the texture coordinates need to be adjusted to show only their section
+        // TODO: rendering of non-leaf nodes needs to be disabled
+        // TODO: when merging nodes, rendering of freed nodes needs to be disabled
+
+        size_t num_vertices = nm->numVertices();
+        Vertex * vertices = nm->getVertices();
+        size_t num_triangles = nm->numTriangles();
+        Triangle * triangles = nm->getTriangles();
+
+        glGenBuffers(1, &nm->VBO);
+        glGenBuffers(1, &nm->IBO);
+
+        glGenVertexArrays(1, &nm->VAO);
+        glBindVertexArray(nm->VAO);
+
+            //VAOs.push_back(VAO);
+
+            // Vertex buffer
+            glBindBuffer(GL_ARRAY_BUFFER, nm->VBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * num_vertices, vertices, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(0); // Position ; Matches layout (location = 0)
+            glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+
+            glEnableVertexAttribArray(1); // Normal   ; Matches layout (location = 1)
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)sizeof(glm::vec4));
+
+            glEnableVertexAttribArray(2); // TexCoord ; Matches layout (location = 2)
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(sizeof(glm::vec4) + sizeof(glm::vec3)));
+
+            glEnableVertexAttribArray(3); // Colors   ; Matches layout (location = 3)
+            glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (GLvoid*)(sizeof(glm::vec4) + sizeof(glm::vec3) + sizeof(glm::vec2)));
+
+            // Index buffer
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, nm->IBO);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Triangle) * num_triangles, triangles, GL_STATIC_DRAW);
+
+        glBindVertexArray(0);
+
         meshes.push_back(nm);
+
+        return meshes.size()-1;
     }
 
     void newSquareMesh() {
         MeshCompMesh * nm = new MeshCompMesh;
         nm->make_square(1.0f, 1.0);
+        // TODO: this needs to generate the buffers, etc.
         meshes.push_back(nm);
     }
 
@@ -137,6 +208,7 @@ public:
         MeshCompMesh * nm = new MeshCompMesh;
         nm->load(filename);
         nm->copy_from_mesh();
+        // TODO: this needs to generate the buffers, etc.
         meshes.push_back(nm);
     }
 

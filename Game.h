@@ -9,24 +9,31 @@
 #include "QuadTreeComp.h"
 #include "LoadShaders.h"
 
+// TODO: consider using bit fields to shrink the node array size
+// TODO: the node
 struct QuadTreeNode {
-	QuadTreeNode() : leaf(true) {}
+	QuadTreeNode() : leaf(true), first(true) {}
 	bool leaf;
+    bool first; // TODO: determine if this needed
+    size_t mesh_index; // TODO: maybe remove
 };
 
 enum qt_action_type {SUBDIVIDE, MERGE};
 enum corner_t {NW=0, NE=1, SW=2, SE=3};
 
 struct qt_action {
-    qt_action(size_t _idx, qt_action_type _action) : idx(_idx), action(_action) {}
+    qt_action(size_t _idx, qt_action_type _action, float _s=1.0f, glm::vec3 const & _pos = glm::vec3(0.0f)) : idx(_idx), action(_action), s(_s), pos(_pos) {} // TODO: remove s and pos
     size_t idx;
     qt_action_type action;
+    float s; // TODO: remove this
+    glm::vec3 pos; // TODO: probably remove this
 };
 
-class QuadTree {
+class TerrainComp : public MeshComp {
 public:
 	// depth=0 means just 1 node
-	QuadTree(size_t depth, size_t vertsPerSide = 3, float sideLength = 1.0f) :
+	TerrainComp(GameObject * _game_object, size_t depth, size_t vertsPerSide = 3, float sideLength = 1.0f) :
+        MeshComp(_game_object),
 	    treeDepth(depth),
 	    vps(vertsPerSide),
 	    sl(sideLength)
@@ -43,6 +50,7 @@ public:
 		rs.push_back(1.0f);
 		rs.push_back(0.5f);
 		rs.push_back(0.25f);
+        nodes[0].mesh_index = newGridMesh(5);
 	}
 
 	void printHierarchy(size_t idx = 0, size_t depth = 0) {
@@ -61,6 +69,7 @@ public:
         }
     }
 	
+    // TODO: Do I need to make the MeshComp's update() virtual? Do I need to make this one virtual?
 	void update() {
 		// examine the inducers and decide which nodes to merge or subdivide
 		std::vector<qt_action> actions;
@@ -71,7 +80,7 @@ public:
 		execActions(actions);
 	}
 
-	void addInducer(glm::vec3 * inducer) {
+	void addInducer(glm::vec3 const * inducer) {
 	    inducers.push_back(inducer);
     }
 	
@@ -101,17 +110,60 @@ private:
     void merge(size_t nodeIdx) {
         std::cout << "===merge node " << nodeIdx << std::endl;
         nodes[nodeIdx].leaf = true;
+        enableMesh(nodes[nodeIdx].mesh_index);
+        size_t child0 = firstChildIdx(nodeIdx);
+        disableMesh(nodes[child0+0].mesh_index);
+        disableMesh(nodes[child0+1].mesh_index);
+        disableMesh(nodes[child0+2].mesh_index);
+        disableMesh(nodes[child0+3].mesh_index);
     }
 
     // TODO: create mesh
-    void subdivide(size_t nodeIdx) {
+    void subdivide(size_t nodeIdx, float s, glm::vec3 const & pos) { // TODO: remove the s and pos arguments
+
         std::cout << "===subdivide node " << nodeIdx << std::endl;
         nodes[nodeIdx].leaf = false;
+
+        disableMesh(nodes[nodeIdx].mesh_index);
+
         size_t child0 = firstChildIdx(nodeIdx);
+
+        // TODO: make for loop
+        if(nodes[child0+0].first) {
+            nodes[child0+0].mesh_index = newGridMesh(5, pos + glm::vec3(-s/2,  s/2, 0.0f), s);
+            nodes[child0+0].first = false;
+        }
+        else {
+            enableMesh(nodes[child0+0].mesh_index);
+        }
         nodes[child0+0].leaf = true;
+
+        if(nodes[child0+1].first) {
+            nodes[child0+1].mesh_index = newGridMesh(5, pos + glm::vec3( s/2,  s/2, 0.0f), s);
+            nodes[child0+1].first = false;
+        }
+        else {
+            enableMesh(nodes[child0+1].mesh_index);
+        }
         nodes[child0+1].leaf = true;
+
+        if(nodes[child0+2].first) {
+            nodes[child0+2].mesh_index = newGridMesh(5, pos + glm::vec3(-s/2, -s/2, 0.0f), s);
+            nodes[child0+2].first = false;
+        }
+        else {
+            enableMesh(nodes[child0+2].mesh_index);
+        }
         nodes[child0+2].leaf = true;
-        nodes[child0+2].leaf = true;
+
+        if(nodes[child0+3].first) {
+            nodes[child0+3].mesh_index = newGridMesh(5, pos + glm::vec3( s/2, -s/2, 0.0f), s);
+            nodes[child0+3].first = false;
+        }
+        else {
+            enableMesh(nodes[child0+3].mesh_index);
+        }
+        nodes[child0+3].leaf = true;
     }
 
     void execActions(std::vector<qt_action> & actions) {
@@ -119,13 +171,14 @@ private:
             if(i->action == MERGE)
                 merge(i->idx);
             else if(i->action == SUBDIVIDE)
-                subdivide(i->idx);
+                subdivide(i->idx, i->s, i->pos); // TODO: remove i->s and i->pos
         }
     }
 
     // TODO: the corner path technique results in redundant math operations
     // instead, pass position down through getActions as an argument
     // root node is depth=0
+    // TODO: position comparisons need to take the Transform component into account
     glm::vec3 posFromCornerPath(uint32_t path, size_t depth) {
         glm::vec3 nodePos = position;
         float l = sl/2.0f;
@@ -133,8 +186,8 @@ private:
             uint32_t corner = getCorner(path, i);
             l /= 2.0f;
             if(corner == NW) { nodePos += glm::vec3(-l,  l, 0.0f); }
-            if(corner == SW) { nodePos += glm::vec3(-l, -l, 0.0f); }
             if(corner == NE) { nodePos += glm::vec3( l,  l, 0.0f); }
+            if(corner == SW) { nodePos += glm::vec3(-l, -l, 0.0f); }
             if(corner == SE) { nodePos += glm::vec3( l, -l, 0.0f); }
         }
         return nodePos;
@@ -145,6 +198,11 @@ private:
 
         glm::vec3 nodePos = posFromCornerPath(path, depth);
 
+        float l = sl/2.0f;
+        for(size_t i=1; i <= depth; i++)
+            l /= 2.0f;
+
+        // TODO: consider using a faster distance function (e.g. bounding box i.e. 0 < x < 1 for x, y, and z)
 	    if(nodes[nodeIdx].leaf) { // is leaf; decide whether to subdivide
             float d = distance(*inducers[0], nodePos);
             // TODO: iterate over inducers
@@ -152,7 +210,7 @@ private:
                 std::cout << "path: " << path << ", depth: " << depth << std::endl;
                 std::cout << "inducer: " << inducers[0]->x << "," << inducers[0]->y << ", " << inducers[0]->z << "\tnode(" << nodeIdx << "): " << nodePos.x << ", " << nodePos.y << std::endl;
                 std::cout << d << " < " << rs[depth] << ", pushing subdivide...\n";
-                actions.push_back(qt_action(nodeIdx, SUBDIVIDE));
+                actions.push_back(qt_action(nodeIdx, SUBDIVIDE, l, nodePos)); // TODO: remove nodePos argument
             }
         }
         else { // has children; decide whether to merge. otherwise, descend
@@ -185,7 +243,7 @@ private:
 	size_t vps;
 	float sl;
     glm::vec3 position;
-    std::vector<glm::vec3 *> inducers;
+    std::vector<glm::vec3 const *> inducers;
     std::vector<float> rs;
     std::vector<float> ps;
 	QuadTreeNode * nodes;
@@ -217,6 +275,26 @@ PointLight pointlights[] = {
 };
 
 size_t num_lights = sizeof(pointlights)/sizeof(PointLight);
+
+class TerrainObject : public GameObject {
+public:
+    TerrainObject(GLuint _program, Camera const & camera) : GameObject(_program) {
+
+        TransformComp * tc = new TransformComp(this);
+        //tc->setOrientation(glm::quat(glm::vec3(glm::radians(-90.0f), glm::radians(0.0f), glm::radians(0.0f))));
+        //tc->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
+        addComponent(tc);
+
+        TerrainComp * mc = new TerrainComp(this,2); // TODO: should the destination type by TerrainComp?
+        addComponent(mc);
+
+        mc->addInducer(&camera.Position);
+
+        addComponent(new RenderComp(this));
+    }
+
+private:
+};
 
 class BoxObject : public GameObject {
 public:
@@ -323,8 +401,8 @@ public:
         windowWidth(1600), windowHeight(900), sdl_flags(SDL_WINDOW_OPENGL),
         clk(tps, rate),
         camera(glm::vec3(0.0f, 0.0f, 3.0f)),
-        wireframe(false),
-        qt(2) // TODO
+        wireframe(false)
+        //qt(2) // TODO
     {
         for(int i=0; i<NUM_KEYS; i++) {
             keys[i] = false;
@@ -385,7 +463,10 @@ public:
 
         glUniform1i(glGetUniformLocation(program, "invertTexCoords"), 1);
 
-        qt.addInducer(&camera.Position); // TODO: this should end up as a game object
+        TerrainObject * terrainObj = new TerrainObject(program, camera);
+        objects.push_back(terrainObj);
+
+        //qt.addInducer(&camera.Position); // TODO: this should end up as a game object
 
         // Test object:
         //BoxObject * boxObj = new BoxObject(program);
@@ -406,7 +487,7 @@ public:
             SDL_PumpEvents();
             process_events();
             render();
-            qt.update(); // TODO: this should end up as a game object
+            //qt.update(); // TODO: this should end up as a game object
             for(auto i = objects.begin(); i != objects.end(); i++) {
                 (*i)->update();
             }
@@ -512,7 +593,7 @@ private:
                         first_mouse = false;
                     }
                     else {
-                        //camera.ProcessMouseMovement((float)event.motion.xrel, (float)event.motion.yrel*-1.0f);
+                        camera.ProcessMouseMovement((float)event.motion.xrel, (float)event.motion.yrel*-1.0f);
                     }
                     break;
 
@@ -545,7 +626,7 @@ private:
     std::vector<GameObject *> objects;
 
     // TODO: make this a game object component
-    QuadTree qt;
+    //QuadTree qt;
 
     bool wireframe;
     enum KEYS { W_KEY = 0, S_KEY, A_KEY, D_KEY, NUM_KEYS };

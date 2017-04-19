@@ -127,9 +127,9 @@ Triangle * grid_of_triangles(size_t n) {
     return triangles;
 }
 
-void MeshCompMesh::make_grid(size_t vps, glm::vec3 const & position) {
+void MeshCompMesh::make_grid(size_t vps, glm::vec3 const & position, float sl) {
 
-    vertices = grid_of_vertices(vps, position, 1.0f); // sets position and color
+    vertices = grid_of_vertices(vps, position, sl); // sets position and color
     num_vertices = vps*vps;
 
     triangles = grid_of_triangles(vps);
