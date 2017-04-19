@@ -10,11 +10,11 @@
 #include "LoadShaders.h"
 
 // TODO: consider using bit fields to shrink the node array size
-// TODO: the node
+// TODO: the node can efficiently store position by 
 struct QuadTreeNode {
 	QuadTreeNode() : leaf(true), first(true) {}
 	bool leaf;
-    bool first; // TODO: determine if this needed
+    bool first; // TODO: consider indicating first visit by having mesh_index initialize to maximum value
     size_t mesh_index; // TODO: maybe remove
 };
 
@@ -47,44 +47,24 @@ public:
 		nodes = new QuadTreeNode[n];
 		numNodes = n;
         // TODO: user must define these
+		rs.push_back(3.0f);
 		rs.push_back(1.0f);
 		rs.push_back(0.5f);
-		rs.push_back(0.25f);
-        nodes[0].mesh_index = newGridMesh(5);
+        nodes[0].mesh_index = newGridMesh(vertsPerSide);
 	}
 
-	void printHierarchy(size_t idx = 0, size_t depth = 0) {
-	    for(size_t i=0; i < depth; i++)
-            std::cout << " ";
-	    if(nodes[idx].leaf) {
-            std::cout << "leaf\n";
-        }
-        else {
-            std::cout << "node\n";
-            size_t child0 = firstChildIdx(idx);
-            printHierarchy(child0+0, depth+1);
-            printHierarchy(child0+1, depth+1);
-            printHierarchy(child0+2, depth+1);
-            printHierarchy(child0+3, depth+1);
-        }
-    }
-	
     // TODO: Do I need to make the MeshComp's update() virtual? Do I need to make this one virtual?
 	void update() {
-		// examine the inducers and decide which nodes to merge or subdivide
 		std::vector<qt_action> actions;
 		getActions(actions);
-		for(std::vector<qt_action>::iterator i = actions.begin(); i != actions.end(); i++) {
-            std::cout << "\tidx: " << i->idx << "\taction: " << i->action << std::endl;
-        }
 		execActions(actions);
+        // TODO: currently tree actions and mesh enable/disable actions are executed in the same methods
+        //       consider making a separate tree traversal for mesh enable/disable (cost: an extra traversal; benefit: more control)
 	}
 
 	void addInducer(glm::vec3 const * inducer) {
 	    inducers.push_back(inducer);
     }
-	
-	size_t getNumNodes() { return numNodes; }
 
 private:
 
@@ -106,64 +86,39 @@ private:
         return nodeIdx+nodeIdx*3+1;
     }
 
-    // TODO: disable children meshes from rendering. Also: schedule freeing of mesh data
+    // TODO: schedule freeing of mesh data
     void merge(size_t nodeIdx) {
-        std::cout << "===merge node " << nodeIdx << std::endl;
         nodes[nodeIdx].leaf = true;
         enableMesh(nodes[nodeIdx].mesh_index);
         size_t child0 = firstChildIdx(nodeIdx);
-        disableMesh(nodes[child0+0].mesh_index);
-        disableMesh(nodes[child0+1].mesh_index);
-        disableMesh(nodes[child0+2].mesh_index);
-        disableMesh(nodes[child0+3].mesh_index);
+        for(size_t i=0; i<4; i++)
+            disableMesh(nodes[child0+i].mesh_index);
     }
 
-    // TODO: create mesh
     void subdivide(size_t nodeIdx, float s, glm::vec3 const & pos) { // TODO: remove the s and pos arguments
 
-        std::cout << "===subdivide node " << nodeIdx << std::endl;
         nodes[nodeIdx].leaf = false;
 
         disableMesh(nodes[nodeIdx].mesh_index);
 
         size_t child0 = firstChildIdx(nodeIdx);
 
-        // TODO: make for loop
-        if(nodes[child0+0].first) {
-            nodes[child0+0].mesh_index = newGridMesh(5, pos + glm::vec3(-s/2,  s/2, 0.0f), s);
-            nodes[child0+0].first = false;
-        }
-        else {
-            enableMesh(nodes[child0+0].mesh_index);
-        }
-        nodes[child0+0].leaf = true;
+        glm::vec3 childPositions[4];
+        childPositions[NW] = glm::vec3(-s/2,  s/2, 0.0f);
+        childPositions[NE] = glm::vec3( s/2,  s/2, 0.0f);
+        childPositions[SW] = glm::vec3(-s/2, -s/2, 0.0f);
+        childPositions[SE] = glm::vec3( s/2, -s/2, 0.0f);
 
-        if(nodes[child0+1].first) {
-            nodes[child0+1].mesh_index = newGridMesh(5, pos + glm::vec3( s/2,  s/2, 0.0f), s);
-            nodes[child0+1].first = false;
+        for(size_t i=0; i < 4; i++) {
+            if(nodes[child0+i].first) {
+                nodes[child0+i].mesh_index = newGridMesh(vps, pos + childPositions[i], s);
+                nodes[child0+i].first = false;
+            }
+            else {
+                enableMesh(nodes[child0+i].mesh_index);
+            }
+            nodes[child0+i].leaf = true;
         }
-        else {
-            enableMesh(nodes[child0+1].mesh_index);
-        }
-        nodes[child0+1].leaf = true;
-
-        if(nodes[child0+2].first) {
-            nodes[child0+2].mesh_index = newGridMesh(5, pos + glm::vec3(-s/2, -s/2, 0.0f), s);
-            nodes[child0+2].first = false;
-        }
-        else {
-            enableMesh(nodes[child0+2].mesh_index);
-        }
-        nodes[child0+2].leaf = true;
-
-        if(nodes[child0+3].first) {
-            nodes[child0+3].mesh_index = newGridMesh(5, pos + glm::vec3( s/2, -s/2, 0.0f), s);
-            nodes[child0+3].first = false;
-        }
-        else {
-            enableMesh(nodes[child0+3].mesh_index);
-        }
-        nodes[child0+3].leaf = true;
     }
 
     void execActions(std::vector<qt_action> & actions) {
@@ -202,33 +157,24 @@ private:
         for(size_t i=1; i <= depth; i++)
             l /= 2.0f;
 
+        // TODO: iterate over inducers
+
         // TODO: consider using a faster distance function (e.g. bounding box i.e. 0 < x < 1 for x, y, and z)
 	    if(nodes[nodeIdx].leaf) { // is leaf; decide whether to subdivide
             float d = distance(*inducers[0], nodePos);
-            // TODO: iterate over inducers
-	        if((depth < treeDepth) && (d < rs[depth])) { // TODO: check for off-by-one
-                std::cout << "path: " << path << ", depth: " << depth << std::endl;
-                std::cout << "inducer: " << inducers[0]->x << "," << inducers[0]->y << ", " << inducers[0]->z << "\tnode(" << nodeIdx << "): " << nodePos.x << ", " << nodePos.y << std::endl;
-                std::cout << d << " < " << rs[depth] << ", pushing subdivide...\n";
+	        if((depth < treeDepth) && (d < rs[depth]))
                 actions.push_back(qt_action(nodeIdx, SUBDIVIDE, l, nodePos)); // TODO: remove nodePos argument
-            }
         }
         else { // has children; decide whether to merge. otherwise, descend
             bool do_merge = true;
-            // TODO: iterate over inducers
             float d = distance(*inducers[0], nodePos);
-	        if(d < rs[depth]) { // TODO: check for off-by-one
+	        if(d < rs[depth]) {
                 do_merge = false;
             }
-            if(do_merge) {
-                std::cout << "path: " << path << ", depth: " << depth << std::endl;
-                std::cout << "inducer: " << inducers[0]->x << "," << inducers[0]->y << ", " << inducers[0]->z << "\tnode(" << nodeIdx << "): " << nodePos.x << ", " << nodePos.y << std::endl;
-                std::cout << d << " > " << rs[depth] << ", pushing merge...\n";
+            if(do_merge)
                 actions.push_back(qt_action(nodeIdx, MERGE));
-            }
             else {
                 size_t child0 = firstChildIdx(nodeIdx);
-                // TODO: check for off-by-one errors
                 // TODO: this is probably very fragile
                 getActions(actions, child0+0, depth+1, addCorner(path, NW, depth+1) );
                 getActions(actions, child0+1, depth+1, addCorner(path, NE, depth+1) );
@@ -285,7 +231,7 @@ public:
         //tc->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
         addComponent(tc);
 
-        TerrainComp * mc = new TerrainComp(this,2); // TODO: should the destination type by TerrainComp?
+        TerrainComp * mc = new TerrainComp(this,2,9); // TODO: should the destination type by TerrainComp?
         addComponent(mc);
 
         mc->addInducer(&camera.Position);
