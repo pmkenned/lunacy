@@ -6,194 +6,8 @@
 #include "TransformComp.h"
 #include "RenderComp.h"
 #include "MeshComp.h"
-#include "QuadTreeComp.h"
+#include "TerrainComp.h"
 #include "LoadShaders.h"
-
-// TODO: consider using bit fields to shrink the node array size
-// TODO: the node can efficiently store position by 
-struct QuadTreeNode {
-	QuadTreeNode() : leaf(true), first(true) {}
-	bool leaf;
-    bool first; // TODO: consider indicating first visit by having mesh_index initialize to maximum value
-    size_t mesh_index; // TODO: maybe remove
-};
-
-enum qt_action_type {SUBDIVIDE, MERGE};
-enum corner_t {NW=0, NE=1, SW=2, SE=3};
-
-struct qt_action {
-    qt_action(size_t _idx, qt_action_type _action, float _s=1.0f, glm::vec3 const & _pos = glm::vec3(0.0f)) : idx(_idx), action(_action), s(_s), pos(_pos) {} // TODO: remove s and pos
-    size_t idx;
-    qt_action_type action;
-    float s; // TODO: remove this
-    glm::vec3 pos; // TODO: probably remove this
-};
-
-class TerrainComp : public MeshComp {
-public:
-	// depth=0 means just 1 node
-	TerrainComp(GameObject * _game_object, size_t depth, size_t vertsPerSide = 3, float sideLength = 1.0f) :
-        MeshComp(_game_object),
-	    treeDepth(depth),
-	    vps(vertsPerSide),
-	    sl(sideLength)
-	{
-		size_t n = 1;
-		size_t r = 1;
-		for(size_t i=0; i < treeDepth; i++) {
-			r *= 4;
-			n += r;
-		}
-		nodes = new QuadTreeNode[n];
-		numNodes = n;
-        // TODO: user must define these
-		rs.push_back(3.0f);
-		rs.push_back(1.0f);
-		rs.push_back(0.5f);
-        nodes[0].mesh_index = newGridMesh(vertsPerSide);
-	}
-
-    // TODO: Do I need to make the MeshComp's update() virtual? Do I need to make this one virtual?
-	void update() {
-		std::vector<qt_action> actions;
-		getActions(actions);
-		execActions(actions);
-        // TODO: currently tree actions and mesh enable/disable actions are executed in the same methods
-        //       consider making a separate tree traversal for mesh enable/disable (cost: an extra traversal; benefit: more control)
-	}
-
-	void addInducer(glm::vec3 const * inducer) {
-	    inducers.push_back(inducer);
-    }
-
-private:
-
-	uint32_t getCorner(uint32_t path, size_t depth) {
-	    uint32_t mask_off = 3 << (2*depth);
-	    path &= mask_off;
-	    return path >> (2*depth);
-    }
-
-	uint32_t addCorner(uint32_t path, uint32_t corner, size_t depth) {
-	    uint32_t corner_off = corner << (2*depth);
-	    path |= corner_off;
-	    return path;
-    }
-
-    // TODO: getParent()
-
-	inline size_t firstChildIdx(size_t nodeIdx) {
-        return nodeIdx+nodeIdx*3+1;
-    }
-
-    // TODO: schedule freeing of mesh data
-    void merge(size_t nodeIdx) {
-        nodes[nodeIdx].leaf = true;
-        enableMesh(nodes[nodeIdx].mesh_index);
-        size_t child0 = firstChildIdx(nodeIdx);
-        for(size_t i=0; i<4; i++)
-            disableMesh(nodes[child0+i].mesh_index);
-    }
-
-    void subdivide(size_t nodeIdx, float s, glm::vec3 const & pos) { // TODO: remove the s and pos arguments
-
-        nodes[nodeIdx].leaf = false;
-
-        disableMesh(nodes[nodeIdx].mesh_index);
-
-        size_t child0 = firstChildIdx(nodeIdx);
-
-        glm::vec3 childPositions[4];
-        childPositions[NW] = glm::vec3(-s/2,  s/2, 0.0f);
-        childPositions[NE] = glm::vec3( s/2,  s/2, 0.0f);
-        childPositions[SW] = glm::vec3(-s/2, -s/2, 0.0f);
-        childPositions[SE] = glm::vec3( s/2, -s/2, 0.0f);
-
-        for(size_t i=0; i < 4; i++) {
-            if(nodes[child0+i].first) {
-                nodes[child0+i].mesh_index = newGridMesh(vps, pos + childPositions[i], s);
-                nodes[child0+i].first = false;
-            }
-            else {
-                enableMesh(nodes[child0+i].mesh_index);
-            }
-            nodes[child0+i].leaf = true;
-        }
-    }
-
-    void execActions(std::vector<qt_action> & actions) {
-        for(std::vector<qt_action>::iterator i = actions.begin(); i < actions.end(); i++) {
-            if(i->action == MERGE)
-                merge(i->idx);
-            else if(i->action == SUBDIVIDE)
-                subdivide(i->idx, i->s, i->pos); // TODO: remove i->s and i->pos
-        }
-    }
-
-    // TODO: the corner path technique results in redundant math operations
-    // instead, pass position down through getActions as an argument
-    // root node is depth=0
-    // TODO: position comparisons need to take the Transform component into account
-    glm::vec3 posFromCornerPath(uint32_t path, size_t depth) {
-        glm::vec3 nodePos = position;
-        float l = sl/2.0f;
-        for(size_t i=1; i <= depth; i++) {
-            uint32_t corner = getCorner(path, i);
-            l /= 2.0f;
-            if(corner == NW) { nodePos += glm::vec3(-l,  l, 0.0f); }
-            if(corner == NE) { nodePos += glm::vec3( l,  l, 0.0f); }
-            if(corner == SW) { nodePos += glm::vec3(-l, -l, 0.0f); }
-            if(corner == SE) { nodePos += glm::vec3( l, -l, 0.0f); }
-        }
-        return nodePos;
-    }
-
-    // TODO: consider passing in position recursively instead of relying on posFromCornerPath
-	void getActions(std::vector<qt_action> & actions, size_t nodeIdx=0, size_t depth=0, uint32_t path=0) {
-
-        glm::vec3 nodePos = posFromCornerPath(path, depth);
-
-        float l = sl/2.0f;
-        for(size_t i=1; i <= depth; i++)
-            l /= 2.0f;
-
-        // TODO: iterate over inducers
-
-        // TODO: consider using a faster distance function (e.g. bounding box i.e. 0 < x < 1 for x, y, and z)
-	    if(nodes[nodeIdx].leaf) { // is leaf; decide whether to subdivide
-            float d = distance(*inducers[0], nodePos);
-	        if((depth < treeDepth) && (d < rs[depth]))
-                actions.push_back(qt_action(nodeIdx, SUBDIVIDE, l, nodePos)); // TODO: remove nodePos argument
-        }
-        else { // has children; decide whether to merge. otherwise, descend
-            bool do_merge = true;
-            float d = distance(*inducers[0], nodePos);
-	        if(d < rs[depth]) {
-                do_merge = false;
-            }
-            if(do_merge)
-                actions.push_back(qt_action(nodeIdx, MERGE));
-            else {
-                size_t child0 = firstChildIdx(nodeIdx);
-                // TODO: this is probably very fragile
-                getActions(actions, child0+0, depth+1, addCorner(path, NW, depth+1) );
-                getActions(actions, child0+1, depth+1, addCorner(path, NE, depth+1) );
-                getActions(actions, child0+2, depth+1, addCorner(path, SW, depth+1) );
-                getActions(actions, child0+3, depth+1, addCorner(path, SE, depth+1) );
-            }
-        }
-    }
-
-	size_t treeDepth;
-	size_t numNodes;
-	size_t vps;
-	float sl;
-    glm::vec3 position;
-    std::vector<glm::vec3 const *> inducers;
-    std::vector<float> rs;
-    std::vector<float> ps;
-	QuadTreeNode * nodes;
-};
 
 ShaderInfo shaders[] = {
     { GL_VERTEX_SHADER, "lighting.vs" },
@@ -231,7 +45,7 @@ public:
         //tc->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
         addComponent(tc);
 
-        TerrainComp * mc = new TerrainComp(this,2,9); // TODO: should the destination type by TerrainComp?
+        TerrainComp * mc = new TerrainComp(this,4,9); // TODO: should the destination type by TerrainComp?
         addComponent(mc);
 
         mc->addInducer(&camera.Position);
@@ -412,15 +226,10 @@ public:
         TerrainObject * terrainObj = new TerrainObject(program, camera);
         objects.push_back(terrainObj);
 
-        //qt.addInducer(&camera.Position); // TODO: this should end up as a game object
-
         // Test object:
         //BoxObject * boxObj = new BoxObject(program);
         //boxObj->getComponent<TransformComp>()->setPosition(glm::vec3(0.0f, 0.0f, -3.0f));
         //objects.push_back(boxObj);
-
-        //objects.push_back(new QuadTree(program));
-        //objects[0]->getComponent<TransformComp>()->setPosition(glm::vec3(0.0f, 0.0f, -3.0f));
 
         return 0;
     }
@@ -432,8 +241,7 @@ public:
         while(!done) {
             SDL_PumpEvents();
             process_events();
-            render();
-            //qt.update(); // TODO: this should end up as a game object
+            render(); // TODO: rename this. Maybe "prepare render"?
             for(auto i = objects.begin(); i != objects.end(); i++) {
                 (*i)->update();
             }
@@ -498,7 +306,7 @@ private:
         // Create camera transformations
         glm::mat4 view;
         view = camera.GetViewMatrix();
-        glm::mat4 projection = glm::perspective(camera.Zoom, (GLfloat)windowWidth / (GLfloat)windowHeight, 0.1f, 100.0f); // TODO: initialize in init()
+        glm::mat4 projection = glm::perspective(camera.Zoom, (GLfloat)windowWidth / (GLfloat)windowHeight, 0.01f, 100.0f); // TODO: initialize in init()
 
         GLint viewLoc  = glGetUniformLocation(program, "view");
         GLint projLoc  = glGetUniformLocation(program, "projection");
@@ -570,9 +378,6 @@ private:
     Camera camera;
     GLuint program;
     std::vector<GameObject *> objects;
-
-    // TODO: make this a game object component
-    //QuadTree qt;
 
     bool wireframe;
     enum KEYS { W_KEY = 0, S_KEY, A_KEY, D_KEY, NUM_KEYS };

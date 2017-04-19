@@ -102,13 +102,17 @@ void MeshCompMesh::make_square(float x, float y) {
     calculate_normals(vertices, num_vertices, triangles, num_triangles);
 }
 
-Vertex * grid_of_vertices(size_t n, glm::vec3 const & center, float side_length) {
+Vertex * grid_of_vertices(size_t n, glm::vec3 const & center, float side_length, glm::vec2 const & uv_nw = glm::vec2(0.0f), glm::vec2 const & uv_se = glm::vec2(1.0f, 1.0f)) {
+    float nw_x = uv_nw.x;
+    float nw_y = uv_nw.y;
+    float se_x = uv_se.x;
+    float se_y = uv_se.y;
     Vertex * vertices = new Vertex[n*n];
-    for(size_t i=0; i<n; i++) {
-        for(size_t j=0; j<n; j++) {
+    for(size_t i=0; i<n; i++) { // i varies across the y-axis (each i value is a row)
+        for(size_t j=0; j<n; j++) { // j varies across x-axis (each j value is a column in row i)
             vertices[i*n+j].pos = glm::vec4(center + glm::vec3((1.0*j)/(n-1) - 0.5, (-1.0*i)/(n-1) + 0.5, 0.0) * side_length, 1.0f);
-            vertices[i*n+j].color = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f); // red
-            vertices[i*n+j].texCoord = glm::vec2(1.0f*j/(n-1), 1.0f*(n-i-1)/(n-1));
+            vertices[i*n+j].color = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f); // gray
+            vertices[i*n+j].texCoord = glm::vec2(se_x*j/(n-1)+nw_x, se_y*(n-i-1)/(n-1)+nw_y);
         }
     }
     return vertices;
@@ -127,9 +131,9 @@ Triangle * grid_of_triangles(size_t n) {
     return triangles;
 }
 
-void MeshCompMesh::make_grid(size_t vps, glm::vec3 const & position, float sl) {
+void MeshCompMesh::make_grid(size_t vps, glm::vec3 const & position, float sl, glm::vec2 const & uv_nw, glm::vec2 const & uv_se) {
 
-    vertices = grid_of_vertices(vps, position, sl); // sets position and color
+    vertices = grid_of_vertices(vps, position, sl, uv_nw, uv_se); // sets position and color
     num_vertices = vps*vps;
 
     triangles = grid_of_triangles(vps);

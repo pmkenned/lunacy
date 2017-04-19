@@ -112,7 +112,7 @@ public:
     void make_cube(float xs = 1.0f, float ys = 1.0f, float zs = 1.0f, float xc = 0.0f, float yc = 0.0f, float zc = 0.0f );
     void make_pyramid(float xs = 1.0f, float ys = 1.0f, float zs = 1.0f, float xc = 0.0f, float yc = 0.0f, float zc = 0.0f );
     void make_square(float x, float y);
-    void make_grid(size_t vps, glm::vec3 const & position, float sl); // TODO: reuse IBO somehow
+    void make_grid(size_t vps, glm::vec3 const & position, float sl, glm::vec2 const & uv_nw = glm::vec2(0.0f), glm::vec2 const & uv_se = glm::vec2(1.0f, 1.0f)); // TODO: reuse IBO somehow
 
 
     // TODO: make private
@@ -146,16 +146,12 @@ public:
 
     // TODO: write toggleMesh function
 
-    size_t newGridMesh(size_t vps, glm::vec3 const & position = glm::vec3(0.0f), float sl=1.0f) {
+    size_t newGridMesh(size_t vps, glm::vec3 const & position = glm::vec3(0.0f), float sl=1.0f, glm::vec2 const & uv_nw = glm::vec2(0.0f), glm::vec2 const & uv_se = glm::vec2(1.0f,1.0f)) {
         MeshCompMesh * nm = new MeshCompMesh;
-        nm->make_grid(vps, position, sl);
-
-        std::cout << "new mesh...\n";
+        nm->make_grid(vps, position, sl, uv_nw, uv_se);
 
         // TODO: consider moving the following code to a common subroutine
         // TODO: the texture coordinates need to be adjusted to show only their section
-        // TODO: rendering of non-leaf nodes needs to be disabled
-        // TODO: when merging nodes, rendering of freed nodes needs to be disabled
 
         size_t num_vertices = nm->numVertices();
         Vertex * vertices = nm->getVertices();
@@ -167,8 +163,6 @@ public:
 
         glGenVertexArrays(1, &nm->VAO);
         glBindVertexArray(nm->VAO);
-
-            //VAOs.push_back(VAO);
 
             // Vertex buffer
             glBindBuffer(GL_ARRAY_BUFFER, nm->VBO);
