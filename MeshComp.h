@@ -99,7 +99,7 @@ public:
 
     // accessor methods
     size_t      numVertices()   { return num_vertices; }
-    Vertex *    getVertices()   { return vertices; }
+    Vertex *    getVertices()   { return vertices; }     // TODO: oh god, I return pointers to private data members?! D:
     size_t      numTriangles()  { return num_triangles; }
     Triangle *  getTriangles()  { return triangles; }
 
@@ -129,6 +129,9 @@ private:
     Triangle * triangles;
 };
 
+// TODO: this is redundant with the enum in TerrainComp; doesn't belong here
+enum corner_t {NW=0, NE=1, SW=2, SE=3};
+
 class MeshComp : public Component {
 public:
 
@@ -146,13 +149,7 @@ public:
 
     // TODO: write toggleMesh function
 
-    size_t newGridMesh(size_t vps, glm::vec3 const & position = glm::vec3(0.0f), float sl=1.0f, glm::vec2 const & uv_nw = glm::vec2(0.0f), glm::vec2 const & uv_se = glm::vec2(1.0f,1.0f)) {
-        MeshCompMesh * nm = new MeshCompMesh;
-        nm->make_grid(vps, position, sl, uv_nw, uv_se);
-
-        // TODO: consider moving the following code to a common subroutine
-        // TODO: the texture coordinates need to be adjusted to show only their section
-
+    size_t addMesh(MeshCompMesh * nm) {
         size_t num_vertices = nm->numVertices();
         Vertex * vertices = nm->getVertices();
         size_t num_triangles = nm->numTriangles();

@@ -17,6 +17,7 @@
 #include <map>
 #include <cmath>
 #include <vector>
+#include <random>
 
 #include "SDL.h"
 

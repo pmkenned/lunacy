@@ -102,6 +102,7 @@ void MeshCompMesh::make_square(float x, float y) {
     calculate_normals(vertices, num_vertices, triangles, num_triangles);
 }
 
+// TODO: consider defining normals here (as 0.0, 0.0, 1.0) to skip calculate_normals step in make_grid
 Vertex * grid_of_vertices(size_t n, glm::vec3 const & center, float side_length, glm::vec2 const & uv_nw = glm::vec2(0.0f), glm::vec2 const & uv_se = glm::vec2(1.0f, 1.0f)) {
     float nw_x = uv_nw.x;
     float nw_y = uv_nw.y;
