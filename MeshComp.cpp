@@ -140,10 +140,9 @@ void MeshCompMesh::make_grid(size_t vps, glm::vec3 const & position, float sl, g
     triangles = grid_of_triangles(vps);
     num_triangles = 2*(vps-1)*(vps-1);
 
-    calculate_normals(vertices, num_vertices, triangles, num_triangles);
+    calculate_normals(vertices, num_vertices, triangles, num_triangles); // TODO: consider removing this
 }
 
-//MeshComp::MeshComp(GameObject * _game_object) : Component(_game_object), num_vertices(0), num_triangles(0) {
 MeshComp::MeshComp(GameObject * _game_object) : Component(_game_object) {
 }
 

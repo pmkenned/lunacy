@@ -129,9 +129,6 @@ private:
     Triangle * triangles;
 };
 
-// TODO: this is redundant with the enum in TerrainComp; doesn't belong here
-enum corner_t {NW=0, NE=1, SW=2, SE=3};
-
 class MeshComp : public Component {
 public:
 

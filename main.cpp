@@ -7,13 +7,10 @@
 
 // Questions:
 // About QuadTree:
-// * Does the root node need to be subdivided initially? Why?
-// * Does the QuadTreeNode need to be a component?
 // * Should nodes meshes share the IBO somehow?
 // * Should merging nodes, should the child data be freed? Scheduled for freeing?
 // About GameObjects and Components:
 // * Should subclassing of GameObjects be allowed?
-// * Should subclass of Components be allowed?
 // * Do GameObjects need to be able to have children? Is this a useful feature?
 // About rendering:
 // * Is there a better way to deal with the shader handle?

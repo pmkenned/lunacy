@@ -27,7 +27,7 @@ public:
         glBindTexture(GL_TEXTURE_2D, 0);
 
         // Specular map
-        image = SOIL_load_image("container2_specular.png", &width, &height, 0, SOIL_LOAD_RGB);
+        image = SOIL_load_image("moon_spec3.png", &width, &height, 0, SOIL_LOAD_RGB);
         glBindTexture(GL_TEXTURE_2D, specularMap);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
             glGenerateMipmap(GL_TEXTURE_2D);
@@ -59,12 +59,13 @@ public:
 
         // TODO: maybe the transform component should have a pre-computed model matrix which updates whenever the transform is changed
         GLint modelLoc = glGetUniformLocation(getGameObject()->getProgram(), "model");
-        glm::mat4 model;
-        model = glm::mat4();
-        model = glm::translate(model, tc->getPosition() );
-        //model = glm::rotate(model, radians, axis);
-        model = glm::toMat4(tc->getOrientation()) * model; // use quaternion for rotation
-        model = glm::scale(model, tc->getScale() );
+
+        // TODO: maybe tidy this up a bit
+        glm::mat4 identity;
+        glm::mat4 TranslationMatrix = glm::translate(identity, tc->getPosition());
+        glm::mat4 RotationMatrix = glm::toMat4(tc->getOrientation());
+        glm::mat4 ScaleMatrix = glm::scale(identity, tc->getScale());
+        glm::mat4 model = TranslationMatrix * RotationMatrix * ScaleMatrix;
 
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 

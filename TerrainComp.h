@@ -22,7 +22,7 @@ struct QuadTreeNode {
 };
 
 enum qt_action_type {SUBDIVIDE, MERGE};
-//enum corner_t {NW=0, NE=1, SW=2, SE=3}; // TODO: this is redundantly defined in MeshComp.h
+enum corner_t {NW=0, NE=1, SW=2, SE=3}; // TODO: this is redundantly defined in MeshComp.h
 
 struct qt_action {
     qt_action(size_t _idx, qt_action_type _action) : idx(_idx), action(_action) {}
@@ -39,17 +39,19 @@ public:
 	    treeDepth(depth),
 	    vps(vertsPerSide),
 	    rsl(sideLength),
-        texZoom(16.0f)
+        texZoom(32.0f)
 	{
         numNodes = calcNumNodes(depth);
 		nodes = new QuadTreeNode[numNodes];
 
         ps.push_back(1.0f);
 
-        float default_rs[] = {3.0f, 1.0f, 0.5f, 0.25f};
+        float default_rs[] = {2.0f, 1.0f, 0.5f, 0.25f};
         // TODO: user must define these
-        for(size_t i=0; i<depth; i++)
+        for(size_t i=0; i<depth; i++) {
 		    rs.push_back(default_rs[i]);
+        }
+        glm::vec3 position(0.0f); // TODO: should this be a data member?
         nodes[0].mesh_index = newGridMesh(0, 0, position, sideLength, glm::vec2(0.0f, 0.0f), texZoom*glm::vec2(1.0f, 1.0f));
         setNodePositions();
 	}
@@ -142,12 +144,11 @@ private:
 
         // only perturb the newly created vertices (rest have been copied from parent)
         if(r == 1) {
-            float center_z = (
-                                vs[center + get_nw_far(i)].pos.z +
-                                vs[center + get_ne_far(i)].pos.z +
-                                vs[center + get_sw_far(i)].pos.z +
-                                vs[center + get_se_far(i)].pos.z
-                              ) * 0.25;
+            float nw_corner = vs[center + get_nw_far(i)].pos.z;
+            float ne_corner = vs[center + get_ne_far(i)].pos.z;
+            float sw_corner = vs[center + get_sw_far(i)].pos.z;
+            float se_corner = vs[center + get_se_far(i)].pos.z;
+            float center_z = (nw_corner + ne_corner + sw_corner + se_corner) * 0.25;
 
             float scale = vs[center].pos.x - vs[center + get_west(i)].pos.x; // measure the distance to western-neighbor
             float enable_perturb = 1.0; // make 0 to disable perturb
@@ -202,6 +203,8 @@ private:
         size_t r = vps_to_r(); // TODO: shouldn't have to calculate this every time
         size_t center = get_center();
         diamond_square(nm->getVertices(), idx, depth, r, center);
+
+        calculate_normals(nm->getVertices(), nm->numVertices(), nm->getTriangles(), nm->numTriangles());
 
         return addMesh(nm);
     }
@@ -260,7 +263,7 @@ private:
             QuadTreeNode & child = nodes[child0+i];
             float childSide = node.hsl;
             float childHalfSide = node.hsl/2.0f;
-            glm::vec3 childPos = glm::vec3(child.x, child.y, 0.0f);
+            glm::vec3 childPos = glm::vec3(child.x, child.y, 0.0f); // TODO:
             glm::vec2 uv_nw = glm::vec2(child.x - childHalfSide + 0.5f, child.y - childHalfSide + 0.5f)*texZoom;
             glm::vec2 uv_se = glm::vec2(childSide, childSide)*texZoom;
             if(child.mesh_index == SIZE_MAX)
@@ -284,12 +287,23 @@ private:
         QuadTreeNode & node = nodes[nodeIdx];
         glm::vec3 nodePos = glm::vec3(node.x, node.y, 0.0f);
 
+        TransformComp * tc = getGameObject()->getComponent<TransformComp>();
+
+        // TODO: probably inefficient (should the transform component have a pre-computed model matrix?)
+        glm::mat4 identity;
+        glm::mat4 TranslationMatrix = glm::translate(identity, tc->getPosition());
+        glm::mat4 RotationMatrix = glm::toMat4(tc->getOrientation());
+        glm::mat4 ScaleMatrix = glm::scale(identity, tc->getScale());
+        glm::mat4 model = TranslationMatrix * RotationMatrix * ScaleMatrix;
+
+        glm::vec3 nodeGlobal = glm::vec3(model * glm::vec4(nodePos, 1.0f));
+
         // TODO: consider using a faster distance function (e.g. bounding box i.e. 0 < x < 1 for x, y, and z)
         // TODO: position comparisons need to take the Transform component into account
 	    if(node.leaf) { // is leaf; decide whether to subdivide
             for(auto i = inducers.begin(); i != inducers.end(); i++) {
                 glm::vec3 const * inducer = *i;
-                float d = distance(*inducer, nodePos);
+                float d = distance(*inducer, nodeGlobal);
 	            if((depth < treeDepth) && (d < rs[depth])) {
                     actions.push_back(qt_action(nodeIdx, SUBDIVIDE));
                     break;
@@ -300,7 +314,7 @@ private:
             bool do_merge = true; // assume we do the merge until we confirm that we shouldn't
             for(auto i = inducers.begin(); i != inducers.end(); i++) {
                 glm::vec3 const * inducer = *i;
-                float d = distance(*inducer, nodePos);
+                float d = distance(*inducer, nodeGlobal);
 	            if(d < rs[depth]) {
                     do_merge = false;
                     break;
@@ -320,7 +334,7 @@ private:
 	size_t numNodes;
 	size_t vps; // vertices per side
 	float rsl; // root node side length
-    glm::vec3 position; // this should be coming from the transform...
+    //glm::vec3 position; // this should be coming from the transform...
     std::vector<glm::vec3 const *> inducers;
     std::vector<float> rs;
     std::vector<float> ps;

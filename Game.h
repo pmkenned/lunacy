@@ -41,11 +41,11 @@ public:
     TerrainObject(GLuint _program, Camera const & camera) : GameObject(_program) {
 
         TransformComp * tc = new TransformComp(this);
-        //tc->setOrientation(glm::quat(glm::vec3(glm::radians(-90.0f), glm::radians(0.0f), glm::radians(0.0f))));
-        //tc->setPosition(glm::vec3(0.0f, 0.0f, -5.0f));
+        tc->setOrientation(glm::quat(glm::vec3(glm::radians(-90.0f), glm::radians(0.0f), glm::radians(0.0f))));
+        tc->setPosition(glm::vec3(0.0f, -0.25f, 0.0f));
         addComponent(tc);
 
-        TerrainComp * mc = new TerrainComp(this,4,9); // TODO: should the destination type by TerrainComp?
+        TerrainComp * mc = new TerrainComp(this,4,9); // TODO: should the destination type be TerrainComp?
         addComponent(mc);
 
         mc->addInducer(&camera.Position);
@@ -160,7 +160,7 @@ public:
         done(false),
         windowWidth(1600), windowHeight(900), sdl_flags(SDL_WINDOW_OPENGL),
         clk(tps, rate),
-        camera(glm::vec3(0.0f, 0.0f, 3.0f)),
+        camera(glm::vec3(0.0f, 0.0f, 1.0f)),
         wireframe(false)
         //qt(2) // TODO
     {
@@ -242,6 +242,7 @@ public:
             SDL_PumpEvents();
             process_events();
             render(); // TODO: rename this. Maybe "prepare render"?
+
             for(auto i = objects.begin(); i != objects.end(); i++) {
                 (*i)->update();
             }
